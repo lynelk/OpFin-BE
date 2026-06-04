@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReviewKycCaseRequest;
+use App\Http\Requests\SubmitKycCaseRequest;
 use App\Models\KycCase;
-use App\Models\User;
 use App\Services\AuditLogger;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 
 class ProductionKycController extends Controller
 {
@@ -23,21 +22,10 @@ class ProductionKycController extends Controller
         ]);
     }
 
-    public function submit(Request $request): JsonResponse
+    public function submit(SubmitKycCaseRequest $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'national_id' => 'required|string|max:64',
-            'provider' => 'nullable|string|max:64',
-            'provider_reference' => 'nullable|string|max:128',
-            'evidence' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return ApiResponse::error('Validation failed.', 422, $validator->errors()->toArray());
-        }
-
         $case = KycCase::create([
-            ...$validator->validated(),
+            ...$request->validated(),
             'user_id' => $request->user()->id,
             'status' => KycCase::STATUS_PENDING_REVIEW,
             'submitted_at' => now(),
@@ -48,25 +36,10 @@ class ProductionKycController extends Controller
         return ApiResponse::success('KYC case submitted for review.', ['kyc_case' => $case], 201);
     }
 
-    public function review(KycCase $case, Request $request): JsonResponse
+    public function review(KycCase $case, ReviewKycCaseRequest $request): JsonResponse
     {
-        if (! $request->user()->hasAnyRole([User::ROLE_PLATFORM_ADMIN, User::ROLE_OPERATIONS, User::ROLE_SUPPORT])) {
-            return ApiResponse::error('Forbidden.', 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'status' => ['required', Rule::in([KycCase::STATUS_VERIFIED, KycCase::STATUS_REJECTED])],
-            'review_notes' => 'nullable|string|max:1000',
-            'risk_flags' => 'nullable|array',
-            'expires_at' => 'nullable|date|after:today',
-        ]);
-
-        if ($validator->fails()) {
-            return ApiResponse::error('Validation failed.', 422, $validator->errors()->toArray());
-        }
-
         $case->update([
-            ...$validator->validated(),
+            ...$request->validated(),
             'reviewed_by' => $request->user()->id,
             'reviewed_at' => now(),
         ]);

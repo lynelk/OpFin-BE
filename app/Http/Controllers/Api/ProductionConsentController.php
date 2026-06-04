@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\GrantConsentRequest;
 use App\Models\ConsentRecord;
 use App\Services\AuditLogger;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 class ProductionConsentController extends Controller
 {
@@ -21,26 +21,15 @@ class ProductionConsentController extends Controller
         ]);
     }
 
-    public function grant(Request $request): JsonResponse
+    public function grant(GrantConsentRequest $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'purpose' => 'required|string|max:64',
-            'policy_version' => 'required|string|max:32',
-            'channel' => 'nullable|string|max:32',
-            'metadata' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return ApiResponse::error('Validation failed.', 422, $validator->errors()->toArray());
-        }
-
         ConsentRecord::where('user_id', $request->user()->id)
             ->where('purpose', $request->input('purpose'))
             ->where('status', ConsentRecord::STATUS_GRANTED)
             ->update(['status' => ConsentRecord::STATUS_REVOKED, 'revoked_at' => now()]);
 
         $consent = ConsentRecord::create([
-            ...$validator->validated(),
+            ...$request->validated(),
             'user_id' => $request->user()->id,
             'status' => ConsentRecord::STATUS_GRANTED,
             'channel' => $request->input('channel', 'api'),

@@ -2,23 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\LoanApplication;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\SubmitLoanApplicationRequest;
+use App\Http\Requests\UpdateLoanApplicationStatusRequest;
+use App\Models\Institution;
 use App\Models\Loan;
+use App\Models\LoanApplication;
 use App\Models\LoanProduct;
 use App\Models\LoanProductTerm;
-use Exception;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Controller;
-use App\Models\Institution;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\AirtelDisbursementService;
 use App\Services\AirtelService;
 use App\Services\MtnMomoService;
+use Exception;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class LoanApplicationController extends Controller
@@ -60,28 +61,11 @@ class LoanApplicationController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(SubmitLoanApplicationRequest $request)
     {
-        $validator = Validator::make($request->all(), [
-            'loan_product_id' => 'required|exists:loan_products,id',
-            'loan_product_term_id' => 'required|exists:loan_product_terms,id',
-            'institution_id' => 'required|exists:institutions,id',
-            'amount' => 'required|numeric',
-            'reason' => 'required|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            Log::error('Validation failed for loan application', ['errors' => $validator->errors()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed.',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
         $user = Auth::user();
-        $ninStatus = $user->nin_status;
-        if ($ninStatus !== 'VALID') {
+
+        if ($user->nin_status !== 'VALID') {
             return response()->json([
                 'success' => false,
                 'message' => 'Your NIN is not verified. Please head to the profile page to validate your NIN'
@@ -91,7 +75,6 @@ class LoanApplicationController extends Controller
         try {
             $userId = $user->id;
 
-            // Check if the user has any uncleared loans
             $unclearedLoan = Loan::where('user_id', $userId)
                 ->whereNotIn('status', ['Cleared'])
                 ->first();
@@ -103,7 +86,6 @@ class LoanApplicationController extends Controller
                 ], 400);
             }
 
-            // Check if the user has any pending applications
             $pendingApplication = LoanApplication::where('user_id', $userId)
                 ->where('status', 'Pending')
                 ->first();
@@ -141,30 +123,8 @@ class LoanApplicationController extends Controller
         }
     }
 
-    /**
-     * Update the status of a loan application.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function updateStatus(Request $request, $id)
+    public function updateStatus(UpdateLoanApplicationStatusRequest $request, $id)
     {
-        if (!$this->canManageLoans($request)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized.'
-            ], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:Approved,Rejected,Disbursed,Cancelled',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['error' => $validator->errors()->first()], 422);
-        }
-
         DB::beginTransaction();
 
         try {
@@ -196,16 +156,6 @@ class LoanApplicationController extends Controller
         }
     }
 
-    private function canManageLoans(Request $request): bool
-    {
-        $user = $request->user();
-
-        return (bool) ($user?->is_admin || $user?->hasAnyRole([
-            User::ROLE_PLATFORM_ADMIN,
-            User::ROLE_OPERATIONS,
-        ]));
-    }
-
     public function getProducts()
     {
         try {
@@ -220,7 +170,6 @@ class LoanApplicationController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
 
     public function getProductTerms($id)
     {
@@ -244,8 +193,7 @@ class LoanApplicationController extends Controller
 
     public function createTransaction(LoanApplication $loanApplication)
     {
-
-        $transaction =  Transaction::create([
+        $transaction = Transaction::create([
             'user_id' => $loanApplication->user_id,
             'institution_id' => $loanApplication->institution_id,
             'loan_application_id' => $loanApplication->id,
@@ -262,7 +210,6 @@ class LoanApplicationController extends Controller
     public function disburseLoan(LoanApplication $loanApplication, Transaction $transaction)
     {
         try {
-            // Mark transaction as processing
             $transaction->update([
                 'status' => 'Processing',
                 'processing_at' => now()
@@ -281,33 +228,25 @@ class LoanApplicationController extends Controller
                 throw new \Exception($paymentResponse['message'] ?? 'Payment processing failed');
             }
 
-            // Update transaction on success
-            $updateData = [
+            $transaction->update([
                 'status' => $paymentResponse['status'],
                 'external_reference' => $paymentResponse['transaction_id'],
                 'updated_at' => now(),
-            ];
-
-            $transaction->update($updateData);
+            ]);
         } catch (\Exception $e) {
-            // Log detailed error
             Log::error('Loan Disbursement failed', [
                 'error' => $e->getMessage(),
                 'loan_id' => $loanApplication->id,
                 'transaction_id' => $transaction->id,
             ]);
 
-            // Update transaction with failure status
-            $transaction->update([
-                'status' => 'FAILED',
-            ]);
+            $transaction->update(['status' => 'FAILED']);
 
             $transaction->loanApplication->update([
                 'status' => 'Rejected',
                 'rejected_at' => now(),
             ]);
 
-            // Return detailed error response
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
