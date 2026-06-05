@@ -15,8 +15,8 @@ use App\Models\User;
 use App\Services\AirtelDisbursementService;
 use App\Services\AirtelService;
 use App\Services\MtnMomoService;
+use App\Support\ApiResponse;
 use Exception;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -27,15 +27,10 @@ class LoanApplicationController extends Controller
     public function getLoanBalance(User $user)
     {
         if ($user->id !== Auth::id()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized.'
-            ], 403);
+            return ApiResponse::error('Unauthorized.', 403);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Loan balance retrieved successfully',
+        return ApiResponse::success('Loan balance retrieved successfully.', [
             'outstandingAmount' => $user->outstandingAmount(),
         ]);
     }
@@ -43,21 +38,24 @@ class LoanApplicationController extends Controller
     public function index($id)
     {
         if ((int) $id !== Auth::id()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized.'
-            ], 403);
+            return ApiResponse::error('Unauthorized.', 403);
         }
 
         try {
-            $applications = LoanApplication::where('user_id', $id)->with(['user', 'loanProduct', 'loanProductTerm', 'institution', 'loan'])->latest()->get()->each(function ($application) {
-                if ($application->loan) {
-                    $application->loan->append('outstanding_balance');
-                }
-            });
-            return response()->json(['data' => $applications], 200);
+            $applications = LoanApplication::where('user_id', $id)
+                ->with(['user', 'loanProduct', 'loanProductTerm', 'institution', 'loan'])
+                ->latest()
+                ->get()
+                ->each(function ($application) {
+                    if ($application->loan) {
+                        $application->loan->append('outstanding_balance');
+                    }
+                });
+
+            return ApiResponse::success('Applications loaded.', $applications->toArray());
         } catch (Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Error loading loan applications: ' . $e->getMessage());
+            return ApiResponse::error('Failed to load applications.', 500);
         }
     }
 
@@ -66,10 +64,7 @@ class LoanApplicationController extends Controller
         $user = Auth::user();
 
         if ($user->nin_status !== 'VALID') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Your NIN is not verified. Please head to the profile page to validate your NIN'
-            ], 400);
+            return ApiResponse::error('Your NIN is not verified. Please head to the profile page to validate your NIN', 400);
         }
 
         try {
@@ -80,10 +75,7 @@ class LoanApplicationController extends Controller
                 ->first();
 
             if ($unclearedLoan) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You have an uncleared loan, please clear that first to be able to qualify for another loan.'
-                ], 400);
+                return ApiResponse::error('You have an uncleared loan, please clear that first to be able to qualify for another loan.', 400);
             }
 
             $pendingApplication = LoanApplication::where('user_id', $userId)
@@ -91,10 +83,7 @@ class LoanApplicationController extends Controller
                 ->first();
 
             if ($pendingApplication) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You already have a pending application, please wait for it to get processed.'
-                ], 400);
+                return ApiResponse::error('You already have a pending application, please wait for it to get processed.', 400);
             }
 
             $loanApplication = LoanApplication::create([
@@ -108,18 +97,10 @@ class LoanApplicationController extends Controller
             ]);
             $this->createTransaction($loanApplication);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Application submitted successfully.',
-                'data' => $loanApplication
-            ], 201);
+            return ApiResponse::success('Application submitted successfully.', $loanApplication->toArray(), 201);
         } catch (\Exception $e) {
             Log::error('Error creating loan application: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error creating loan application. ' . $e->getMessage(),
-                'error' => $e->getMessage()
-            ], 500);
+            return ApiResponse::error('Error creating loan application.', 500);
         }
     }
 
@@ -131,7 +112,7 @@ class LoanApplicationController extends Controller
             $loanApplication = LoanApplication::findOrFail($id);
 
             if ($loanApplication->status !== 'Pending') {
-                return response()->json(['error' => 'Loan application is not in a pending state.'], 400);
+                return ApiResponse::error('Loan application is not in a pending state.', 400);
             }
 
             $loanApplication->status = $request->status;
@@ -148,11 +129,12 @@ class LoanApplicationController extends Controller
 
             $loanApplication->save();
             DB::commit();
-            return response()->json(['data' => $loanApplication], 200);
+
+            return ApiResponse::success('Application status updated.', $loanApplication->toArray());
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error updating loan application status: ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while updating the loan application status.'], 500);
+            return ApiResponse::error('An error occurred while updating the loan application status.', 500);
         }
     }
 
@@ -165,9 +147,10 @@ class LoanApplicationController extends Controller
                     ->orWhere('institution_id', null);
             })->get();
 
-            return response()->json(['data' => $products], 200);
+            return ApiResponse::success('Products loaded.', $products->toArray());
         } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Error loading products: ' . $e->getMessage());
+            return ApiResponse::error('Failed to load products.', 500);
         }
     }
 
@@ -175,9 +158,10 @@ class LoanApplicationController extends Controller
     {
         try {
             $terms = LoanProductTerm::with('product.institution')->where('loan_product_id', $id)->get();
-            return response()->json(['data' => $terms], 200);
+            return ApiResponse::success('Product terms loaded.', $terms->toArray());
         } catch (Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Error loading product terms: ' . $e->getMessage());
+            return ApiResponse::error('Failed to load product terms.', 500);
         }
     }
 
@@ -185,9 +169,10 @@ class LoanApplicationController extends Controller
     {
         try {
             $institutions = Institution::all();
-            return response()->json(['data' => $institutions], 200);
+            return ApiResponse::success('Institutions loaded.', $institutions->toArray());
         } catch (Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error('Error loading institutions: ' . $e->getMessage());
+            return ApiResponse::error('Failed to load institutions.', 500);
         }
     }
 
