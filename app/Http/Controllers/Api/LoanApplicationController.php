@@ -54,7 +54,8 @@ class LoanApplicationController extends Controller
 
             return ApiResponse::success('Loan applications retrieved successfully.', $applications->toArray());
         } catch (Exception $e) {
-            return ApiResponse::error($e->getMessage(), 500);
+            Log::error('Error retrieving loan applications: ' . $e->getMessage());
+            return ApiResponse::error('An error occurred while retrieving loan applications.', 500);
         }
     }
 
@@ -112,7 +113,7 @@ class LoanApplicationController extends Controller
             return ApiResponse::success('Application submitted successfully.', $loanApplication->toArray(), 201);
         } catch (\Exception $e) {
             Log::error('Error creating loan application: ' . $e->getMessage());
-            return ApiResponse::error('Error creating loan application. ' . $e->getMessage(), 500);
+            return ApiResponse::error('An error occurred while processing your application.', 500);
         }
     }
 
@@ -184,7 +185,8 @@ class LoanApplicationController extends Controller
 
             return ApiResponse::success('Products retrieved successfully.', $products->toArray());
         } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage(), 500);
+            Log::error('Error retrieving products: ' . $e->getMessage());
+            return ApiResponse::error('An error occurred while retrieving products.', 500);
         }
     }
 
@@ -194,7 +196,8 @@ class LoanApplicationController extends Controller
             $terms = LoanProductTerm::with('product.institution')->where('loan_product_id', $id)->get();
             return ApiResponse::success('Product terms retrieved successfully.', $terms->toArray());
         } catch (Exception $e) {
-            return ApiResponse::error($e->getMessage(), 500);
+            Log::error('Error retrieving product terms: ' . $e->getMessage());
+            return ApiResponse::error('An error occurred while retrieving product terms.', 500);
         }
     }
 
@@ -204,7 +207,8 @@ class LoanApplicationController extends Controller
             $institutions = Institution::all();
             return ApiResponse::success('Institutions retrieved successfully.', $institutions->toArray());
         } catch (Exception $e) {
-            return ApiResponse::error($e->getMessage(), 500);
+            Log::error('Error retrieving institutions: ' . $e->getMessage());
+            return ApiResponse::error('An error occurred while retrieving institutions.', 500);
         }
     }
 

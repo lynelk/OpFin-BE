@@ -105,12 +105,12 @@ class FrontEndAlignmentTest extends TestCase
         [$user] = $this->createCustomerWithApplication();
         Sanctum::actingAs($user);
 
-        $this->getJson("/api/loan-applications/{$user->id}")
+        $response = $this->getJson("/api/loan-applications/{$user->id}")
             ->assertOk()
             ->assertJsonStructure(['success', 'message', 'data'])
             ->assertJsonPath('success', true);
 
-        $this->assertIsArray($this->getJson("/api/loan-applications/{$user->id}")->json('data'));
+        $this->assertIsArray($response->json('data'));
     }
 
     // POST /loan-applications/{id}/status → LoanApplication inside data with success + message
