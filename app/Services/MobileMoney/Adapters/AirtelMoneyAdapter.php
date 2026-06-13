@@ -13,12 +13,12 @@ class AirtelMoneyAdapter implements MobileMoneyProviderInterface
 {
     public function disburse(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse
     {
-        return $this->submit($transaction, '/standard/v1/disbursements/');
+        return MobileMoneyProviderResponse::failed('airtel', 'Airtel Money integration is not yet implemented.', false);
     }
 
     public function collect(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse
     {
-        return $this->submit($transaction, '/merchant/v1/payments/');
+        return MobileMoneyProviderResponse::failed('airtel', 'Airtel Money integration is not yet implemented.', false);
     }
 
     public function lookupStatus(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse

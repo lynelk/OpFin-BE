@@ -154,7 +154,9 @@ class LoanService
             );
 
             // Update Loan Product Account
-            $loanProductAccount = Account::where('loan_product_id', $loan->loan_product_id)->first();
+            $loanProductAccount = Account::where('loan_product_id', $loan->loan_product_id)
+                ->where('name', '!=', 'Interest Income')
+                ->first();
             $this->updateAccountBalance(
                 $loanProductAccount,
                 $transaction->amount,
@@ -215,8 +217,12 @@ class LoanService
             }
 
             // 3. Principal portion → Loan Product Account (Debit)
+            // Exclude 'Interest Income' to avoid ambiguity when multiple accounts
+            // share the same loan_product_id (e.g. Interest Income + Loan Product).
             if ($principalPaid > 0) {
-                $loanProductAccount = Account::where('loan_product_id', $transaction->loan->loan_product_id)->first();
+                $loanProductAccount = Account::where('loan_product_id', $transaction->loan->loan_product_id)
+                    ->where('name', '!=', 'Interest Income')
+                    ->first();
                 if (! $loanProductAccount) {
                     throw new Exception('Loan Product account not found for loan product ID: ' . $transaction->loan->loan_product_id);
                 }

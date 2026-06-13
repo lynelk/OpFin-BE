@@ -13,12 +13,12 @@ class MtnMobileMoneyAdapter implements MobileMoneyProviderInterface
 {
     public function disburse(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse
     {
-        return $this->submit('disbursement', $transaction, '/disbursement/v1_0/transfer');
+        return MobileMoneyProviderResponse::failed('mtn', 'MTN Mobile Money integration is not yet implemented.', false);
     }
 
     public function collect(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse
     {
-        return $this->submit('collection', $transaction, '/collection/v1_0/requesttopay');
+        return MobileMoneyProviderResponse::failed('mtn', 'MTN Mobile Money integration is not yet implemented.', false);
     }
 
     public function lookupStatus(MobileMoneyTransaction $transaction): MobileMoneyProviderResponse
