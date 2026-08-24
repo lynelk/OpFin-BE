@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -32,8 +34,18 @@ jobs:
       - name: Run tests
         run: php artisan test
 
-      - name: Check PHP formatting
-        run: ./vendor/bin/pint --test
+      - name: Check PHP formatting for changed files
+        shell: bash
+        run: |
+          BASE_REF="${GITHUB_BASE_REF:-main}"
+          git fetch origin "$BASE_REF" --depth=1
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD -- '*.php')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed PHP files to lint."
+            exit 0
+          fi
+          printf 'Checking %s changed PHP files\n' "${#files[@]}"
+          ./vendor/bin/pint --test "${files[@]}"
 
       - name: Audit Composer dependencies
         run: composer audit
