@@ -87,4 +87,17 @@ jobs:
         run: flutter test
 
       - name: Build Android release
-        run: flutter build apk --release
+        run: |
+          status=1
+          for attempt in 1 2 3; do
+            if flutter build apk --release --no-pub; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -lt 3 ]; then
+              delay=$((attempt * 30))
+              echo "Android release build attempt $attempt failed; retrying in ${delay}s for transient repository/network errors."
+              sleep "$delay"
+            fi
+          done
+          exit "$status"
