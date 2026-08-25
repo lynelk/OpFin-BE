@@ -1,0 +1,62 @@
+name: Refresh Composer Lock
+
+on:
+  push:
+    branches:
+      - rebuild/v5-foundation
+    paths:
+      - composer.json
+      - .github/workflows/refresh-composer-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: rebuild/v5-foundation
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+          tools: composer:v2
+
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+
+      - name: Resolve supported dependencies
+        run: composer update --with-all-dependencies --no-interaction --prefer-dist --no-progress
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Verify dependency audit
+        run: composer audit
+
+      - name: Run backend tests
+        run: php artisan test
+
+      - name: Verify PHP formatting
+        run: ./vendor/bin/pint --test
+
+      - name: Commit refreshed lock file
+        run: |
+          if git diff --quiet -- composer.lock; then
+            echo "composer.lock already reflects the supported dependency graph."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add composer.lock
+          git commit -m "chore(deps): refresh composer lock"
+          git push origin HEAD:rebuild/v5-foundation
