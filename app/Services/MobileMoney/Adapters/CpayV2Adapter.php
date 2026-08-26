@@ -45,30 +45,40 @@ class CpayV2Adapter implements MobileMoneyProviderInterface
 
     public function processWebhook(array $payload, array $headers = []): MobileMoneyProviderResponse
     {
-        $eventType = strtolower(trim((string) ($payload['eventType'] ?? '')));
-        $status = strtoupper(trim((string) ($payload['status'] ?? '')));
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $eventType = strtolower(trim((string) ($payload['eventType'] ?? $payload['event_type'] ?? '')));
+        $status = strtoupper(trim((string) ($payload['status'] ?? $data['status'] ?? '')));
 
         if ($status === '') {
             $status = match ($eventType) {
-                'payment.completed', 'payout.completed', 'refund.completed' => 'SUCCESSFUL',
+                'payment.completed', 'payment.succeeded', 'payment.successful',
+                'payout.completed', 'payout.succeeded', 'payout.successful',
+                'refund.completed', 'refund.succeeded', 'refund.successful' => 'SUCCESSFUL',
                 'payment.failed', 'payout.failed', 'refund.failed' => 'FAILED',
                 default => 'PENDING',
             };
         }
 
         $normalizedStatus = $this->normalizeStatus($status);
+        $providerReference = $payload['transactionId']
+            ?? $payload['transaction_id']
+            ?? $data['transactionId']
+            ?? $data['transaction_id']
+            ?? $payload['reference']
+            ?? $data['reference']
+            ?? null;
 
         return new MobileMoneyProviderResponse(
             provider: 'cpay',
             successful: $normalizedStatus !== MobileMoneyTransaction::STATUS_FAILED,
             status: $normalizedStatus,
-            providerReference: $payload['transactionId'] ?? $payload['reference'] ?? null,
+            providerReference: $providerReference,
             message: 'CPay webhook event normalized.',
             retryable: $normalizedStatus === MobileMoneyTransaction::STATUS_PENDING,
             reconciliationStatus: $normalizedStatus === MobileMoneyTransaction::STATUS_FAILED
                 ? MobileMoneyTransaction::RECONCILIATION_EXCEPTION
                 : MobileMoneyTransaction::RECONCILIATION_PENDING,
-            webhookEventId: $payload['eventId'] ?? null,
+            webhookEventId: $payload['eventId'] ?? $payload['event_id'] ?? null,
             raw: $payload,
         );
     }
