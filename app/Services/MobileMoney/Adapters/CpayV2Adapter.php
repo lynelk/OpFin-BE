@@ -45,13 +45,12 @@ class CpayV2Adapter implements MobileMoneyProviderInterface
 
     public function processWebhook(array $payload, array $headers = []): MobileMoneyProviderResponse
     {
-        $eventType = strtolower((string) ($payload['event_type'] ?? ''));
-        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
-        $status = strtoupper((string) ($data['status'] ?? ''));
+        $eventType = strtolower(trim((string) ($payload['eventType'] ?? '')));
+        $status = strtoupper(trim((string) ($payload['status'] ?? '')));
 
         if ($status === '') {
             $status = match ($eventType) {
-                'payment.succeeded', 'payout.succeeded', 'refund.succeeded' => 'SUCCESSFUL',
+                'payment.completed', 'payout.completed', 'refund.completed' => 'SUCCESSFUL',
                 'payment.failed', 'payout.failed', 'refund.failed' => 'FAILED',
                 default => 'PENDING',
             };
@@ -63,13 +62,13 @@ class CpayV2Adapter implements MobileMoneyProviderInterface
             provider: 'cpay',
             successful: $normalizedStatus !== MobileMoneyTransaction::STATUS_FAILED,
             status: $normalizedStatus,
-            providerReference: $data['transaction_id'] ?? $data['merchant_reference'] ?? null,
+            providerReference: $payload['transactionId'] ?? $payload['reference'] ?? null,
             message: 'CPay webhook event normalized.',
-            retryable: in_array($status, ['PENDING', 'UNDETERMINED'], true),
-            reconciliationStatus: $status === 'FAILED'
+            retryable: $normalizedStatus === MobileMoneyTransaction::STATUS_PENDING,
+            reconciliationStatus: $normalizedStatus === MobileMoneyTransaction::STATUS_FAILED
                 ? MobileMoneyTransaction::RECONCILIATION_EXCEPTION
                 : MobileMoneyTransaction::RECONCILIATION_PENDING,
-            webhookEventId: $payload['event_id'] ?? null,
+            webhookEventId: $payload['eventId'] ?? null,
             raw: $payload,
         );
     }
@@ -96,21 +95,43 @@ class CpayV2Adapter implements MobileMoneyProviderInterface
     ): MobileMoneyProviderResponse {
         $this->assertConfigured();
 
+        $correlationId = (string) ($transaction->metadata['correlation_id'] ?? $transaction->internal_reference);
+        $traceId = (string) ($transaction->metadata['trace_id'] ?? $correlationId);
+        $productReference = (string) ($transaction->metadata['product_reference'] ?? $transaction->internal_reference);
+        $customerReference = (string) ($transaction->metadata['customer_reference'] ?? ($transaction->user_id ? 'user:'.$transaction->user_id : 'anonymous'));
+        $purpose = (string) ($transaction->metadata['purpose'] ?? $transaction->direction);
+        $country = (string) config('services.cpay.country', 'UG');
+        $channel = $transaction->metadata['channel'] ?? config('services.cpay.channel');
+
+        $metadata = [
+            'correlationId' => $correlationId,
+            'traceId' => $traceId,
+            'productReference' => $productReference,
+            'customerReference' => $customerReference,
+            'purpose' => $purpose,
+            'country' => $country,
+            'callbackEventRoute' => (string) config('services.cpay.callback_url'),
+            'opfinTransactionId' => (string) $transaction->getKey(),
+        ];
+        if (is_string($channel) && trim($channel) !== '') {
+            $metadata['preferredChannel'] = trim($channel);
+        }
+
         $payload = [
             'merchantNumber' => $this->merchantNumber(),
-            'country' => (string) config('services.cpay.country', 'UG'),
+            'country' => $country,
             'currency' => $transaction->currency,
             'amount' => $this->formatAmount($transaction->amount_minor),
             'reference' => $transaction->internal_reference,
             'description' => (string) ($transaction->metadata['description'] ?? "OpFin {$transaction->direction}"),
             'callbackUrl' => (string) config('services.cpay.callback_url'),
+            'metadata' => $metadata,
             $partyKey => [
                 'type' => 'MSISDN',
                 'value' => $transaction->phone,
             ],
         ];
 
-        $channel = $transaction->metadata['channel'] ?? config('services.cpay.channel');
         if (is_string($channel) && trim($channel) !== '') {
             $payload['channel'] = trim($channel);
         }
@@ -156,6 +177,7 @@ class CpayV2Adapter implements MobileMoneyProviderInterface
             'X-CPay-Timestamp' => $timestamp,
             'X-CPay-Nonce' => $nonce,
             'X-CPay-Signature' => $this->sign($canonical),
+            'X-CPay-Environment' => (string) config('services.cpay.environment', 'sandbox'),
         ];
 
         if ($idempotencyKey) {
