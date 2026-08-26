@@ -204,8 +204,18 @@ class MobileMoneyService
         $query = MobileMoneyTransaction::where('provider', $providerName);
 
         if ($providerName === 'cpay') {
-            $merchantReference = $payload['reference'] ?? null;
-            $transactionId = $payload['transactionId'] ?? $providerReference;
+            $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+            $merchantReference = $payload['reference']
+                ?? $payload['merchantReference']
+                ?? $payload['merchant_reference']
+                ?? $data['merchantReference']
+                ?? $data['merchant_reference']
+                ?? null;
+            $transactionId = $payload['transactionId']
+                ?? $payload['transaction_id']
+                ?? $data['transactionId']
+                ?? $data['transaction_id']
+                ?? $providerReference;
             $query->where(function ($inner) use ($transactionId, $merchantReference) {
                 if ($transactionId) {
                     $inner->where('provider_reference', $transactionId);
