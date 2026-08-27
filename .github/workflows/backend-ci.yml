@@ -34,8 +34,8 @@ jobs:
       - name: Enforce CPay-only production money movement
         run: sh scripts/enforce-cpay-only.sh
 
-      - name: Run tests
-        run: php artisan test
+      - name: Run hermetic tests
+        run: sh scripts/run-tests.sh
 
       - name: Check PHP formatting for changed files
         shell: bash
