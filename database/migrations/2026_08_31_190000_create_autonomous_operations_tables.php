@@ -42,7 +42,10 @@ return new class extends Migration
             $table->foreignId('autopilot_run_id')->nullable()->constrained('autopilot_runs')->nullOnDelete();
             $table->timestamps();
 
-            $table->unique(['domain', 'type', 'subject_type', 'subject_reference', 'status'], 'autopilot_open_item_unique');
+            $table->index(
+                ['domain', 'type', 'subject_type', 'subject_reference', 'status'],
+                'autopilot_item_lookup'
+            );
         });
 
         Schema::create('autopilot_action_logs', function (Blueprint $table) {
