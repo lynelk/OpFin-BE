@@ -20,7 +20,10 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        # The committed lockfile currently carries TypeScript 7 while typescript-eslint 8
+        # has not yet widened its peer declaration. Use the existing tested lock graph
+        # rather than allowing npm to rewrite dependencies in CI.
+        run: npm ci --legacy-peer-deps
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
