@@ -20,7 +20,7 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
@@ -28,8 +28,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Install TypeScript 6 API for ESLint
+        # TypeScript 7 currently ships without the compiler API consumed by typescript-eslint.
+        # Keep the application on its locked TS7 compiler, but run ESLint against Microsoft's
+        # supported TypeScript 6 compatibility package until typescript-eslint supports TS7.
+        run: npm install --no-save --legacy-peer-deps typescript@npm:@typescript/typescript6@6.0.2
+
       - name: Lint
         run: npm run lint
+
+      - name: Restore locked application dependencies
+        run: npm ci --legacy-peer-deps
 
       - name: Test
         run: npm run test
