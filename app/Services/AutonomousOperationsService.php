@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -46,7 +45,7 @@ class AutonomousOperationsService
         $observations += $count;
         $exceptions += $created;
 
-        $actions += $this->closeResolvedItems($runId);
+        $actions += $this->executeSafeActions($runId);
 
         $summary = $this->summary();
 
@@ -65,7 +64,7 @@ class AutonomousOperationsService
 
     public function summary(): array
     {
-        if (! Schema::hasTable('autopilot_work_items')) {
+        if (!Schema::hasTable('autopilot_work_items')) {
             return $this->emptySummary();
         }
 
@@ -124,7 +123,7 @@ class AutonomousOperationsService
 
     private function scanKyc(int $runId): array
     {
-        if (! Schema::hasTable('kyc_cases')) {
+        if (!Schema::hasTable('kyc_cases')) {
             return [0, 0];
         }
 
@@ -153,7 +152,7 @@ class AutonomousOperationsService
 
     private function scanConsents(int $runId): array
     {
-        if (! Schema::hasTable('consents')) {
+        if (!Schema::hasTable('consents')) {
             return [0, 0];
         }
 
@@ -186,7 +185,7 @@ class AutonomousOperationsService
 
     private function scanPayments(int $runId): array
     {
-        if (! Schema::hasTable('mobile_money_transactions')) {
+        if (!Schema::hasTable('mobile_money_transactions')) {
             return [0, 0];
         }
 
@@ -218,7 +217,7 @@ class AutonomousOperationsService
 
     private function scanReconciliation(int $runId): array
     {
-        if (! Schema::hasTable('reconciliation_items')) {
+        if (!Schema::hasTable('reconciliation_items')) {
             return [0, 0];
         }
 
@@ -247,7 +246,7 @@ class AutonomousOperationsService
 
     private function scanSupport(int $runId): array
     {
-        if (! Schema::hasTable('support_cases')) {
+        if (!Schema::hasTable('support_cases')) {
             return [0, 0];
         }
 
@@ -279,7 +278,7 @@ class AutonomousOperationsService
 
     private function scanHardship(int $runId): array
     {
-        if (! Schema::hasTable('hardship_cases')) {
+        if (!Schema::hasTable('hardship_cases')) {
             return [0, 0];
         }
 
@@ -306,31 +305,45 @@ class AutonomousOperationsService
         return [$cases->count(), $created];
     }
 
-    private function closeResolvedItems(int $runId): int
+    private function executeSafeActions(int $runId): int
     {
-        $closed = 0;
+        $executed = 0;
         $items = DB::table('autopilot_work_items')->where('status', 'open')->where('requires_human', false)->get();
         foreach ($items as $item) {
             if ($item->type !== 'consent_expiring') {
                 continue;
             }
 
-            DB::table('autopilot_action_logs')->insert([
-                'autopilot_run_id' => $runId,
-                'work_item_id' => $item->id,
-                'domain' => $item->domain,
-                'action' => 'queue_contextual_reconsent_prompt',
-                'outcome' => 'queued',
-                'automation_tier' => 'A2',
-                'context' => $item->context,
-                'executed_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $closed++;
+            DB::transaction(function () use ($runId, $item): void {
+                $current = DB::table('autopilot_work_items')->where('id', $item->id)->lockForUpdate()->first();
+                if (!$current || $current->status !== 'open') {
+                    return;
+                }
+
+                DB::table('autopilot_action_logs')->insert([
+                    'autopilot_run_id' => $runId,
+                    'work_item_id' => $item->id,
+                    'domain' => $item->domain,
+                    'action' => 'queue_contextual_reconsent_prompt',
+                    'outcome' => 'queued',
+                    'automation_tier' => 'A2',
+                    'context' => $item->context,
+                    'executed_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('autopilot_work_items')->where('id', $item->id)->update([
+                    'status' => 'automated',
+                    'resolved_at' => now(),
+                    'resolved_by' => 'SYSTEM:autopilot',
+                    'updated_at' => now(),
+                ]);
+            });
+            $executed++;
         }
 
-        return $closed;
+        return $executed;
     }
 
     private function upsertWorkItem(int $runId, array $data): int
