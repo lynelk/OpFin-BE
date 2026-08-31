@@ -219,11 +219,12 @@ class AuthController extends Controller
             return ApiResponse::error('Maximum OTP attempts reached. Request a new code.', 429);
         }
 
-        if (! Hash::check((string) $request->otp, $otpRecord->otp)) {
+        if (! $this->otpValueMatches($otpRecord, (string) $request->otp)) {
             $otpRecord->increment('attempts');
+            $otpRecord->refresh();
 
             return ApiResponse::error('Invalid or expired OTP', 400, [
-                'attempts_remaining' => max(0, 2 - $otpRecord->attempts),
+                'attempts_remaining' => max(0, 3 - $otpRecord->attempts),
             ]);
         }
 
@@ -272,13 +273,26 @@ class AuthController extends Controller
             return false;
         }
 
-        if (! Hash::check($otp, $otpRecord->otp)) {
+        if (! $this->otpValueMatches($otpRecord, $otp)) {
             $otpRecord->increment('attempts');
 
             return false;
         }
 
         return true;
+    }
+
+    private function otpValueMatches(Otp $otpRecord, string $otp): bool
+    {
+        $stored = (string) $otpRecord->otp;
+
+        if (str_starts_with($stored, '$2y$') || str_starts_with($stored, '$2a$') || str_starts_with($stored, '$2b$')) {
+            return Hash::check($otp, $stored);
+        }
+
+        // Transitional compatibility for OTP rows created before hashed OTP storage was introduced.
+        // Legacy values are short-lived, consumed on success, and all newly generated codes are hashed.
+        return hash_equals($stored, $otp);
     }
 
     private function authUserPayload(User $user): array
