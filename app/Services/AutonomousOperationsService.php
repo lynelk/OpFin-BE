@@ -64,7 +64,7 @@ class AutonomousOperationsService
 
     public function summary(): array
     {
-        if (!Schema::hasTable('autopilot_work_items')) {
+        if (! Schema::hasTable('autopilot_work_items')) {
             return $this->emptySummary();
         }
 
@@ -123,7 +123,7 @@ class AutonomousOperationsService
 
     private function scanKyc(int $runId): array
     {
-        if (!Schema::hasTable('kyc_cases')) {
+        if (! Schema::hasTable('kyc_cases')) {
             return [0, 0];
         }
 
@@ -152,7 +152,7 @@ class AutonomousOperationsService
 
     private function scanConsents(int $runId): array
     {
-        if (!Schema::hasTable('consents')) {
+        if (! Schema::hasTable('consents')) {
             return [0, 0];
         }
 
@@ -185,7 +185,7 @@ class AutonomousOperationsService
 
     private function scanPayments(int $runId): array
     {
-        if (!Schema::hasTable('mobile_money_transactions')) {
+        if (! Schema::hasTable('mobile_money_transactions')) {
             return [0, 0];
         }
 
@@ -217,7 +217,7 @@ class AutonomousOperationsService
 
     private function scanReconciliation(int $runId): array
     {
-        if (!Schema::hasTable('reconciliation_items')) {
+        if (! Schema::hasTable('reconciliation_items')) {
             return [0, 0];
         }
 
@@ -246,7 +246,7 @@ class AutonomousOperationsService
 
     private function scanSupport(int $runId): array
     {
-        if (!Schema::hasTable('support_cases')) {
+        if (! Schema::hasTable('support_cases')) {
             return [0, 0];
         }
 
@@ -278,7 +278,7 @@ class AutonomousOperationsService
 
     private function scanHardship(int $runId): array
     {
-        if (!Schema::hasTable('hardship_cases')) {
+        if (! Schema::hasTable('hardship_cases')) {
             return [0, 0];
         }
 
@@ -316,7 +316,7 @@ class AutonomousOperationsService
 
             DB::transaction(function () use ($runId, $item): void {
                 $current = DB::table('autopilot_work_items')->where('id', $item->id)->lockForUpdate()->first();
-                if (!$current || $current->status !== 'open') {
+                if (! $current || $current->status !== 'open') {
                     return;
                 }
 
