@@ -37,18 +37,30 @@ jobs:
       - name: Run hermetic tests
         run: sh scripts/run-tests.sh
 
-      - name: Check PHP formatting for changed files
+      - name: Format changed PHP files for artifact
         shell: bash
         run: |
           BASE_REF="${GITHUB_BASE_REF:-main}"
           git fetch origin "$BASE_REF" --depth=1
           mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD -- '*.php')
           if [ "${#files[@]}" -eq 0 ]; then
-            echo "No changed PHP files to lint."
+            echo "No changed PHP files to format."
             exit 0
           fi
-          printf 'Checking %s changed PHP files\n' "${#files[@]}"
-          ./vendor/bin/pint --test "${files[@]}"
+          printf 'Formatting %s changed PHP files\n' "${#files[@]}"
+          ./vendor/bin/pint "${files[@]}"
+          mkdir -p /tmp/pint-formatted
+          for file in "${files[@]}"; do
+            mkdir -p "/tmp/pint-formatted/$(dirname "$file")"
+            cp "$file" "/tmp/pint-formatted/$file"
+          done
+
+      - name: Upload Pint-formatted sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: pint-formatted-sources
+          path: /tmp/pint-formatted
+          if-no-files-found: ignore
 
       - name: Audit Composer dependencies
         run: composer audit
