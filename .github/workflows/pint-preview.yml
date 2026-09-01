@@ -1,0 +1,24 @@
+name: Pint Preview
+
+on:
+  push:
+    branches:
+      - fix/financial-integrity-hardening-2-20260901
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Show Pint formatting diff
+        run: |
+          ./vendor/bin/pint app/Services/ProductionLedgerService.php
+          git --no-pager diff -- app/Services/ProductionLedgerService.php
+          test -z "$(git status --porcelain -- app/Services/ProductionLedgerService.php)" || true
