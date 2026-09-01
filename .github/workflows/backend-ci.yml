@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -37,7 +41,7 @@ jobs:
       - name: Run hermetic tests
         run: sh scripts/run-tests.sh
 
-      - name: Format changed PHP files for artifact
+      - name: Normalize changed PHP files with Pint
         shell: bash
         run: |
           BASE_REF="${GITHUB_BASE_REF:-main}"
@@ -47,20 +51,31 @@ jobs:
             echo "No changed PHP files to format."
             exit 0
           fi
-          printf 'Formatting %s changed PHP files\n' "${#files[@]}"
           ./vendor/bin/pint "${files[@]}"
-          mkdir -p /tmp/pint-formatted
-          for file in "${files[@]}"; do
-            mkdir -p "/tmp/pint-formatted/$(dirname "$file")"
-            cp "$file" "/tmp/pint-formatted/$file"
-          done
 
-      - name: Upload Pint-formatted sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: pint-formatted-sources
-          path: /tmp/pint-formatted
-          if-no-files-found: ignore
+      - name: Commit Pint normalization
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Pint made no changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.php'
+          git commit -m "Apply Pint formatting"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
+
+      - name: Verify PHP formatting
+        shell: bash
+        run: |
+          BASE_REF="${GITHUB_BASE_REF:-main}"
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF"...HEAD -- '*.php')
+          if [ "${#files[@]}" -eq 0 ]; then
+            exit 0
+          fi
+          ./vendor/bin/pint --test "${files[@]}"
 
       - name: Audit Composer dependencies
         run: composer audit
