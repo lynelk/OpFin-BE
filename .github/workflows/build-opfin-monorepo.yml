@@ -1,0 +1,37 @@
+name: Build OpFin monorepo candidate
+
+on:
+  push:
+    branches:
+      - migration/opfin-monorepo-20260904
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out migration controller
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build and publish history-preserving monorepo candidate
+        env:
+          BACKEND_SHA: fda182cc2d3d741c5f9b462e5d80d5caea6e594a
+          FRONTEND_SHA: 1ef9a0e9a4766ba802afc97f9b91f366620d053a
+          MONOREPO_BRANCH: monorepo-candidate
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/build-opfin-monorepo.sh
+
+      - name: Upload migration bundle and source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpFin-monorepo-candidate
+          path: |
+            ${{ runner.temp }}/OpFin-monorepo.bundle
+            ${{ runner.temp }}/OpFin-monorepo.tar.gz
+          if-no-files-found: error
+          retention-days: 30
