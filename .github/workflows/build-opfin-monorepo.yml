@@ -18,15 +18,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build and publish history-preserving monorepo candidate
+      - name: Build history-preserving monorepo candidate
         env:
           BACKEND_SHA: fda182cc2d3d741c5f9b462e5d80d5caea6e594a
           FRONTEND_SHA: 1ef9a0e9a4766ba802afc97f9b91f366620d053a
           MONOREPO_BRANCH: monorepo-candidate
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build-opfin-monorepo.sh
 
+      - name: Publish candidate without workflow bootstrap deadlock
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/opfin-monorepo"
+          mkdir -p docs/migration
+          mv .github/workflows/ci.yml docs/migration/ci.yml.pending
+          git add -A
+          git commit -m "Stage monorepo CI for installation after candidate publication"
+          git remote add publish "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force publish HEAD:refs/heads/monorepo-candidate
+          git bundle create "$RUNNER_TEMP/OpFin-monorepo.bundle" --all
+          tar --exclude=.git -czf "$RUNNER_TEMP/OpFin-monorepo.tar.gz" .
+          echo "MONOREPO_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Upload migration bundle and source archive
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: OpFin-monorepo-candidate
@@ -35,3 +51,9 @@ jobs:
             ${{ runner.temp }}/OpFin-monorepo.tar.gz
           if-no-files-found: error
           retention-days: 30
+
+      - name: Report candidate
+        if: success()
+        run: |
+          echo "Published monorepo-candidate at ${MONOREPO_HEAD}"
+          echo "Install docs/migration/ci.yml.pending as .github/workflows/ci.yml to activate consolidated CI."
