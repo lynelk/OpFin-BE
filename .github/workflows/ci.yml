@@ -205,3 +205,29 @@ jobs:
           flutter build ios --release --no-codesign --no-pub \
             --dart-define=OPFIN_API_BASE_URL=https://opfin-api-production.up.railway.app/api \
             --dart-define=OPFIN_APP_STORE_P2P_BORROWING_ENABLED=false
+
+  release-bundle:
+    needs: [layout, api, api-assets, web, client-android, client-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Package exact validated monorepo head
+        run: |
+          set -Eeuo pipefail
+          git branch -f main "$GITHUB_SHA"
+          git bundle create "$RUNNER_TEMP/OpFin-monorepo.bundle" main
+          git archive --format=tar.gz --output="$RUNNER_TEMP/OpFin-monorepo-source.tar.gz" "$GITHUB_SHA"
+          sha256sum "$RUNNER_TEMP/OpFin-monorepo.bundle" "$RUNNER_TEMP/OpFin-monorepo-source.tar.gz" > "$RUNNER_TEMP/SHA256SUMS.txt"
+      - name: Upload validated migration package
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpFin-monorepo-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/OpFin-monorepo.bundle
+            ${{ runner.temp }}/OpFin-monorepo-source.tar.gz
+            ${{ runner.temp }}/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
